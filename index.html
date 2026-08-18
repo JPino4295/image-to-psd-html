@@ -63,11 +63,20 @@
 
                     lineCtx.putImageData(imgData, 0, 0);
 
-                    // Define the PSD document structure (Bottom to Top)
+                    // Define the PSD document structure
                     status.innerText = 'Generating PSD...';
                     const psd = {
                         width: width,
                         height: height,
+                        // 300 dpi
+                        resolutionInfo: {
+                            horizontalResolution: 300,
+                            horizontalResolutionUnit: 'PPI',
+                            widthUnit: 'Inches',
+                            verticalResolution: 300,
+                            verticalResolutionUnit: 'PPI',
+                            heightUnit: 'Inches'
+                        },
                         children: [
                             {
                                 name: 'Background',
