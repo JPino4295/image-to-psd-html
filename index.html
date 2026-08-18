@@ -2,15 +2,25 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Lineart PSD Generator</title>
+    <title>Lineart PSD Generator with Custom DPI</title>
+    <!-- Load ag-psd browser bundle -->
     <script src="https://cdn.jsdelivr.net/npm/ag-psd@14/dist/bundle.js"></script>
 </head>
 <body style="font-family: sans-serif; padding: 20px; background: #f4f4f9;">
     <div style="background: white; padding: 20px; border-radius: 8px; max-width: 500px; border: 1px solid #ccc;">
         <h2>Image to PSD Separator</h2>
-        <p>Select your grayscale image. This script will extract the lineart to a transparent layer, create a white background layer, and generate your PSD.</p>
+        <p>Select your grayscale image and target DPI. The script scales the canvas pixels and generates a layered PSD file.</p>
         
-        <input type="file" id="imageInput" accept="image/*" style="margin-bottom: 15px;" />
+        <div style="margin-bottom: 15px;">
+            <label for="dpiInput" style="font-weight: bold; display: block; margin-bottom: 5px;">Target DPI:</label>
+            <input type="number" id="dpiInput" value="300" min="72" max="1200" style="padding: 6px; width: 100px;" />
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label for="imageInput" style="font-weight: bold; display: block; margin-bottom: 5px;">Select Image:</label>
+            <input type="file" id="imageInput" accept="image/*" />
+        </div>
+
         <p id="status" style="font-weight: bold; color: #333;"></p>
     </div>
 
@@ -25,59 +35,66 @@
             const img = new Image();
             img.onload = function() {
                 try {
-                    const width = img.width;
-                    const height = img.height;
+                    // Calculate scaling based on DPI input against 72 DPI base
+                    const targetDpi = parseInt(document.getElementById('dpiInput').value) || 300;
+                    const scaleFactor = targetDpi / 72; // 72 is standard DPI for screens
+
+                    const scaledWidth = Math.round(img.width * scaleFactor);
+                    const scaledHeight = Math.round(img.height * scaleFactor);
 
                     // Setup Background Layer
                     const bgCanvas = document.createElement('canvas');
-                    bgCanvas.width = width; bgCanvas.height = height;
+                    bgCanvas.width = scaledWidth;
+                    bgCanvas.height = scaledHeight;
                     const bgCtx = bgCanvas.getContext('2d');
                     bgCtx.fillStyle = '#ffffff';
-                    bgCtx.fillRect(0, 0, width, height);
+                    bgCtx.fillRect(0, 0, scaledWidth, scaledHeight);
 
                     // Setup Lineart Layer
                     const lineCanvas = document.createElement('canvas');
-                    lineCanvas.width = width; lineCanvas.height = height;
+                    lineCanvas.width = scaledWidth;
+                    lineCanvas.height = scaledHeight;
                     const lineCtx = lineCanvas.getContext('2d');
-                    lineCtx.drawImage(img, 0, 0);
 
-                    // Read pixel data to separate lines from the background
-                    const imgData = lineCtx.getImageData(0, 0, width, height);
+                    // Scale image with scale factor
+                    lineCtx.imageSmoothingEnabled = true;
+                    lineCtx.imageSmoothingQuality = 'high';
+                    lineCtx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+
+                    // Extract pixel transparency
+                    const imgData = lineCtx.getImageData(0, 0, scaledWidth, scaledHeight);
                     const data = imgData.data;
-                    
-                    // Offset of 4 due to RGB
+
                     for (let i = 0; i < data.length; i += 4) {
-                        const r = data.at(i);
-                        const g = data.at(i+1);
-                        const b = data.at(i+2);
-                        
-                        // Calculate luminance to get darkness
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+
+                        // Calculate luminance to get Alpha later
                         const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-                        
-                        // Convert to pure black, using the original darkness as the opacity (RGBA)
-                        data[i] = 0;     // R
-                        data[i+1] = 0;   // G
-                        data[i+2] = 0;   // B
-                        data[i+3] = 255 - luminance; // Alpha
+
+                        // Pure black with alpha mapped to original darkness
+                        data[i] = 0;       // R
+                        data[i + 1] = 0;   // G
+                        data[i + 2] = 0;   // B
+                        data[i + 3] = 255 - luminance; // Alpha
                     }
 
                     lineCtx.putImageData(imgData, 0, 0);
 
-                    // Define the PSD document structure
                     status.innerText = 'Generating PSD...';
                     const psd = {
-                        width: width,
-                        height: height,
+                        width: scaledWidth,
+                        height: scaledHeight,
                         imageResources: {
-                            // 300 dpi
                             resolutionInfo: {
-                                horizontalResolution: 300,
+                                horizontalResolution: targetDpi,
                                 horizontalResolutionUnit: 'PPI',
                                 widthUnit: 'Inches',
-                                verticalResolution: 300,
+                                verticalResolution: targetDpi,
                                 verticalResolutionUnit: 'PPI',
                                 heightUnit: 'Inches'
-                            },
+                            }
                         },
                         children: [
                             {
@@ -91,24 +108,22 @@
                         ]
                     };
 
-                    // Write to binary buffer and trigger browser download
                     const buffer = agPsd.writePsd(psd);
                     const blob = new Blob([buffer], { type: 'application/octet-stream' });
                     const url = URL.createObjectURL(blob);
 
                     const link = document.createElement('a');
                     link.href = url;
-                    link.download = 'extracted_lineart.psd';
+                    link.download = `extracted_lineart_${targetDpi}dpi.psd`;
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
 
-                    status.innerText = 'PSD generated and downloaded! You can now drag it into Photopea.';
+                    status.innerText = `✅ PSD downloaded at ${scaledWidth}x${scaledHeight}px (${targetDpi} DPI)! Ready for Photopea.`;
                 } catch (error) {
-                    status.innerText = 'Error generating PSD: ' + error.message;
+                    status.innerText = '❌ Error generating PSD: ' + error.message;
                 }
             };
-            // Load the chosen image into the script
             img.src = URL.createObjectURL(file);
         });
     </script>
